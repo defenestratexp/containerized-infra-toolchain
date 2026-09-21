@@ -14,23 +14,9 @@ lives only inside that throwaway container.
 
 ## The pattern
 
-```
- workstation                                   container (docker run --rm)
- ───────────                                   ─────────────────────────────
- ./run.sh [--pull|--build] [cmd...]
-   │ 1. image present?  --pull: ECR  ──────▶   homelab-<env> image
-   │                    --build: local build    (tools only, no secrets)
-   │ 2. read AWS keys from ~/.aws profile
-   │    export AWS_ACCESS_KEY_ID ...
-   │ 3. docker run -e AWS_ACCESS_KEY_ID ──────▶ entrypoint.sh
-   │         -e AWS_SECRET_ACCESS_KEY            │ aws secretsmanager get-secret-value
-   │                                             │   homelab/kubeconfig/<cluster>
-   │                                             │   homelab/ssh/deploy-ansible ...
-   │                                             ▼
-   │                                           writes ~/.kube/config / ~/.ssh/id_rsa
-   │                                           or exports TF_VAR_* / API tokens
-   └──────────────────────────────────────────▶ exec "$@"  (interactive shell or one command)
-```
+![run.sh to container to Secrets Manager to target](docs/diagrams/pattern.png)
+
+The numbers follow one run: read the AWS keys, start the container with them, fetch and write the secret inside the container, then run the command against the target.
 
 - **One small image per tool or cluster.** `kubectl-k3s-main` can only ever talk to one cluster;
   there is no shared kubeconfig with a dozen contexts to get wrong.
@@ -42,6 +28,8 @@ lives only inside that throwaway container.
 - **`--pull` / `--build`.** `--pull` logs in to ECR and refreshes the image; `--build` builds from
   the local Dockerfile. If no image exists locally, `run.sh` tries ECR first and falls back to a
   local build.
+  `atlassian` is the exception: it has no ECR image and builds `homelab-tools-base` and then
+  itself locally on first use (`--build` forces a rebuild of both).
 
 ## Environments
 

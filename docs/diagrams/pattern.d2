@@ -1,0 +1,32 @@
+direction: down
+
+user: Operator {shape: person}
+
+workstation: Workstation {
+  direction: down
+  runsh: "./run.sh [--pull | --build] [cmd...]"
+  profile: "~/.aws/credentials\n(named profile)" {shape: cylinder}
+  dockerfile: "local Dockerfile" 
+  runsh -> profile: "1. read AWS keys"
+}
+
+ecr: "ECR registry\nhomelab/<env>:latest" {shape: cylinder}
+
+container: "container (docker run --rm)" {
+  entry: "entrypoint.sh"
+  files: "~/.kube/config, ~/.ssh key\nor exported tokens / TF_VAR_*"
+  cmd: 'exec "$@" (shell or one command)'
+  entry -> files: "3. write (chmod 600)"
+  files -> cmd
+}
+
+sm: "AWS Secrets Manager\nhomelab/<kind>/<name>" {shape: cloud}
+
+target: "Target\n(k3s cluster, Proxmox API,\nCloudflare, Jira/Confluence, hosts)" {shape: cloud}
+
+user -> workstation.runsh
+workstation.runsh -> ecr: "image missing or --pull"
+workstation.runsh -> workstation.dockerfile: "--build or ECR pull failed"
+workstation.runsh -> container.entry: "2. docker run -e AWS_ACCESS_KEY_ID\n-e AWS_SECRET_ACCESS_KEY"
+container.entry -> sm: "get-secret-value"
+container.cmd -> target: "4. kubectl / ansible / terraform / API calls"
