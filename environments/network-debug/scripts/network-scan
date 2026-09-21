@@ -1,0 +1,44 @@
+#!/bin/bash
+# Quick network scan
+# Usage: network-scan <target> [scan-type]
+
+TARGET=${1:-}
+SCAN_TYPE=${2:-quick}
+
+if [ -z "$TARGET" ]; then
+    echo "Usage: network-scan <target> [scan-type]"
+    echo ""
+    echo "Scan types:"
+    echo "  quick     - Fast ping sweep (default)"
+    echo "  ports     - Common ports scan"
+    echo "  full      - Full port scan (slow)"
+    echo "  services  - Service version detection"
+    echo ""
+    echo "Examples:"
+    echo "  network-scan 192.0.2.0/24 quick"
+    echo "  network-scan 192.0.2.68 ports"
+    echo "  network-scan 192.0.2.68 services"
+    exit 1
+fi
+
+echo "Network scan: $TARGET ($SCAN_TYPE)"
+echo "=================================="
+
+case "$SCAN_TYPE" in
+    quick)
+        nmap -sn "$TARGET"
+        ;;
+    ports)
+        nmap -F "$TARGET"
+        ;;
+    full)
+        nmap -p- "$TARGET"
+        ;;
+    services)
+        nmap -sV -F "$TARGET"
+        ;;
+    *)
+        echo "Unknown scan type: $SCAN_TYPE"
+        exit 1
+        ;;
+esac

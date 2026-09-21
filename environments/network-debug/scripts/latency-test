@@ -1,0 +1,24 @@
+#!/bin/bash
+# Test latency to hosts
+# Usage: latency-test [hosts...]
+
+HOSTS=${@:-${LATENCY_HOSTS:-"192.0.2.68 192.0.2.169 8.8.8.8"}}
+
+echo "Latency Test"
+echo "============"
+printf "%-20s %-15s %-15s %-15s\n" "HOST" "MIN" "AVG" "MAX"
+echo "---------------------------------------------------------------"
+
+for host in $HOSTS; do
+    result=$(ping -c 5 -q "$host" 2>/dev/null | tail -1)
+    if echo "$result" | grep -q "rtt"; then
+        stats=$(echo "$result" | awk -F'/' '{print $4" "$5" "$6}' | awk '{printf "%-15s %-15s %-15s", $1"ms", $2"ms", $3"ms"}')
+        printf "%-20s %s\n" "$host" "$stats"
+    else
+        printf "%-20s \033[0;31m%-15s\033[0m\n" "$host" "UNREACHABLE"
+    fi
+done
+
+echo ""
+echo "MTR to first host:"
+mtr -r -c 5 ${1:-192.0.2.68} 2>/dev/null || echo "MTR failed"

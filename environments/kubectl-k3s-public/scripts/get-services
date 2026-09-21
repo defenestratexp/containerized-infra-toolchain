@@ -1,0 +1,7 @@
+#!/bin/bash
+# Get services, optionally filtered by namespace
+if [ -z "$1" ]; then
+    kubectl get services --all-namespaces -o wide
+else
+    kubectl get services -n "$1" -o wide
+fi

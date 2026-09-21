@@ -1,0 +1,23 @@
+#!/bin/bash
+# Check DNS resolution for a list of internal hosts
+# Usage: dns-check [dns-server]
+#   Hosts come from DNS_CHECK_HOSTS (space-separated); the defaults below are examples.
+
+SERVER=${1:-${DNS_SERVER:-192.0.2.169}}
+
+# Internal hosts to check (override with DNS_CHECK_HOSTS="a.example.internal b.example.internal")
+read -r -a HOSTS <<< "${DNS_CHECK_HOSTS:-k3s-main.example.internal k3s-util.example.internal pve1.example.internal pve2.example.internal nas.example.internal}"
+
+echo "DNS Health Check via $SERVER"
+echo "========================================"
+printf "%-30s %s\n" "HOSTNAME" "RESOLUTION"
+echo "----------------------------------------"
+
+for host in "${HOSTS[@]}"; do
+    result=$(dig @"$SERVER" "$host" +short 2>/dev/null)
+    if [ -n "$result" ]; then
+        printf "%-30s \033[0;32m%s\033[0m\n" "$host" "$result"
+    else
+        printf "%-30s \033[0;31mFAILED\033[0m\n" "$host"
+    fi
+done

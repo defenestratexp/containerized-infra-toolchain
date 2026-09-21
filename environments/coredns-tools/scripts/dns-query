@@ -1,0 +1,19 @@
+#!/bin/bash
+# Query DNS records against CoreDNS
+# Usage: dns-query <hostname> [record-type]
+
+HOST=${1:-}
+TYPE=${2:-A}
+SERVER=${DNS_SERVER:-192.0.2.169}
+
+if [ -z "$HOST" ]; then
+    echo "Usage: dns-query <hostname> [record-type]"
+    echo ""
+    echo "Record types: A, AAAA, CNAME, MX, TXT, NS, SOA, PTR, SRV"
+    echo "DNS Server: $SERVER"
+    exit 1
+fi
+
+echo "Querying $TYPE record for $HOST via $SERVER"
+echo "----------------------------------------"
+dig @"$SERVER" "$HOST" "$TYPE" +short

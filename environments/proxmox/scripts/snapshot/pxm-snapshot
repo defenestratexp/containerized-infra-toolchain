@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+"""
+Proxmox Snapshot Management CLI
+"""
+
+import sys
+import argparse
+import json
+from pathlib import Path
+from datetime import datetime
+
+sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
+
+from proxmox_client import get_client
+from tabulate import tabulate
+
+
+def list_snapshots(args):
+    """List VM snapshots"""
+    client = get_client()
+
+    if not args.node:
+        vm = client.find_vm_by_name(args.vmid if isinstance(args.vmid, str) else str(args.vmid))
+        if vm:
+            args.node = vm['node']
+            args.vmid = vm['vmid']
+
+    snapshots = client.get_snapshots(args.node, int(args.vmid))
+
+    if args.json:
+        print(json.dumps(snapshots, indent=2))
+        return
+
+    if not snapshots:
+        print("No snapshots found")
+        return
+
+    headers = ['Name', 'Description', 'Date', 'VM State']
+    rows = []
+    for snap in snapshots:
+        # Skip 'current' pseudo-snapshot
+        if snap.get('name') == 'current':
+            continue
+
+        snaptime = snap.get('snaptime', 0)
+        date_str = datetime.fromtimestamp(snaptime).strftime('%Y-%m-%d %H:%M:%S') if snaptime else 'N/A'
+
+        rows.append([
+            snap.get('name', 'N/A'),
+            snap.get('description', 'N/A')[:50],
+            date_str,
+            'Included' if snap.get('vmstate', 0) else 'Not included'
+        ])
+
+    print(tabulate(rows, headers=headers, tablefmt='grid'))
+
+
+def create_snapshot(args):
+    """Create a VM snapshot"""
+    client = get_client()
+
+    if not args.node:
+        vm = client.find_vm_by_name(args.vmid if isinstance(args.vmid, str) else str(args.vmid))
+        if vm:
+            args.node = vm['node']
+            args.vmid = vm['vmid']
+
+    result = client.create_snapshot(
+        args.node,
+        int(args.vmid),
+        args.name,
+        description=args.description,
+        vmstate=args.vmstate
+    )
+
+    print(f"Created snapshot '{args.name}' for VM {args.vmid}")
+    if args.json:
+        print(json.dumps(result, indent=2))
+
+
+def delete_snapshot(args):
+    """Delete a VM snapshot"""
+    client = get_client()
+
+    if not args.node:
+        vm = client.find_vm_by_name(args.vmid if isinstance(args.vmid, str) else str(args.vmid))
+        if vm:
+            args.node = vm['node']
+            args.vmid = vm['vmid']
+
+    if not args.yes:
+        response = input(f"Delete snapshot '{args.name}' from VM {args.vmid}? [y/N]: ")
+        if response.lower() != 'y':
+            print("Cancelled")
+            return
+
+    result = client.delete_snapshot(args.node, int(args.vmid), args.name)
+    print(f"Deleted snapshot '{args.name}' from VM {args.vmid}")
+    if args.json:
+        print(json.dumps(result, indent=2))
+
+
+def rollback_snapshot(args):
+    """Rollback to a VM snapshot"""
+    client = get_client()
+
+    if not args.node:
+        vm = client.find_vm_by_name(args.vmid if isinstance(args.vmid, str) else str(args.vmid))
+        if vm:
+            args.node = vm['node']
+            args.vmid = vm['vmid']
+
+    if not args.yes:
+        response = input(f"Rollback VM {args.vmid} to snapshot '{args.name}'? [y/N]: ")
+        if response.lower() != 'y':
+            print("Cancelled")
+            return
+
+    result = client.rollback_snapshot(args.node, int(args.vmid), args.name)
+    print(f"Rolling back VM {args.vmid} to snapshot '{args.name}'")
+    if args.json:
+        print(json.dumps(result, indent=2))
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Proxmox Snapshot Management')
+    parser.add_argument('--json', action='store_true', help='Output in JSON format')
+    parser.add_argument('--node', help='Proxmox node name')
+
+    subparsers = parser.add_subparsers(dest='command', help='Commands')
+
+    # List snapshots
+    list_parser = subparsers.add_parser('list', aliases=['ls'], help='List VM snapshots')
+    list_parser.add_argument('vmid', help='VM ID or name')
+    list_parser.set_defaults(func=list_snapshots)
+
+    # Create snapshot
+    create_parser = subparsers.add_parser('create', help='Create a VM snapshot')
+    create_parser.add_argument('vmid', help='VM ID or name')
+    create_parser.add_argument('name', help='Snapshot name')
+    create_parser.add_argument('--description', '-d', help='Snapshot description')
+    create_parser.add_argument('--vmstate', action='store_true', help='Include VM state (RAM)')
+    create_parser.set_defaults(func=create_snapshot)
+
+    # Delete snapshot
+    delete_parser = subparsers.add_parser('delete', aliases=['rm'], help='Delete a VM snapshot')
+    delete_parser.add_argument('vmid', help='VM ID or name')
+    delete_parser.add_argument('name', help='Snapshot name')
+    delete_parser.add_argument('-y', '--yes', action='store_true', help='Skip confirmation')
+    delete_parser.set_defaults(func=delete_snapshot)
+
+    # Rollback snapshot
+    rollback_parser = subparsers.add_parser('rollback', aliases=['restore'], help='Rollback to a snapshot')
+    rollback_parser.add_argument('vmid', help='VM ID or name')
+    rollback_parser.add_argument('name', help='Snapshot name')
+    rollback_parser.add_argument('-y', '--yes', action='store_true', help='Skip confirmation')
+    rollback_parser.set_defaults(func=rollback_snapshot)
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
+
+    try:
+        args.func(args)
+    except KeyboardInterrupt:
+        print("\nCancelled", file=sys.stderr)
+        sys.exit(130)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

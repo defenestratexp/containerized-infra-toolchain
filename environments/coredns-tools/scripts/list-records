@@ -1,0 +1,21 @@
+#!/bin/bash
+# List all records for a domain/zone
+# Usage: list-records <domain>
+
+DOMAIN=${1:-example.internal}
+SERVER=${DNS_SERVER:-192.0.2.169}
+
+echo "Records for $DOMAIN via $SERVER"
+echo "================================="
+echo ""
+echo "A Records:"
+dig @"$SERVER" "$DOMAIN" A +short
+echo ""
+echo "NS Records:"
+dig @"$SERVER" "$DOMAIN" NS +short
+echo ""
+echo "SOA Record:"
+dig @"$SERVER" "$DOMAIN" SOA +short
+echo ""
+echo "Full zone transfer (if allowed):"
+dig @"$SERVER" "$DOMAIN" AXFR +short 2>/dev/null || echo "Zone transfer not allowed"

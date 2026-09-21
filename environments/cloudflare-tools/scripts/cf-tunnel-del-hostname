@@ -1,0 +1,47 @@
+#!/bin/bash
+# Remove a hostname from the tunnel ingress rules.
+# Usage: cf-tunnel-del-hostname <hostname>
+set -e
+
+HOSTNAME="$1"
+if [ -z "$HOSTNAME" ]; then
+    echo "Usage: cf-tunnel-del-hostname <hostname>" >&2
+    exit 1
+fi
+
+CFG_URL="$CF_API/accounts/$CF_ACCOUNT_ID/cfd_tunnel/$CF_TUNNEL_ID/configurations"
+CURRENT=$(curl -4 -fsS -H "Authorization: Bearer $CF_API_TOKEN" "$CFG_URL")
+INGRESS=$(echo "$CURRENT" | jq '.result.config.ingress')
+WARP=$(echo "$CURRENT" | jq '.result.config["warp-routing"] // empty')
+
+# Refuse if hostname not present (avoid silent no-op surprises)
+if ! echo "$INGRESS" | jq -e --arg h "$HOSTNAME" 'any(.hostname == $h)' >/dev/null; then
+    echo "No ingress rule with hostname '$HOSTNAME' — nothing to do."
+    exit 0
+fi
+
+NEW_INGRESS=$(echo "$INGRESS" | jq --arg h "$HOSTNAME" 'map(select(.hostname != $h))')
+
+if [ -n "$WARP" ] && [ "$WARP" != "null" ]; then
+    BODY=$(jq -n --argjson ingress "$NEW_INGRESS" --argjson warp "$WARP" \
+        '{config: {ingress: $ingress, "warp-routing": $warp}}')
+else
+    BODY=$(jq -n --argjson ingress "$NEW_INGRESS" \
+        '{config: {ingress: $ingress}}')
+fi
+
+echo "Removing $HOSTNAME from tunnel config..."
+RESPONSE=$(curl -4 -fsS -X PUT \
+    -H "Authorization: Bearer $CF_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    --data "$BODY" \
+    "$CFG_URL")
+
+if echo "$RESPONSE" | jq -e '.success' >/dev/null; then
+    echo "OK. Updated ingress rule list:"
+    cf-tunnel-list
+else
+    echo "FAILED:" >&2
+    echo "$RESPONSE" | jq '.errors' >&2
+    exit 1
+fi

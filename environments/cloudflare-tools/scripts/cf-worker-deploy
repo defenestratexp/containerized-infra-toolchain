@@ -1,0 +1,76 @@
+#!/bin/bash
+# Deploy a Cloudflare Worker script via the API. Preserves the worker's
+# existing bindings and compatibility_date — only the script body is
+# replaced.
+#
+# Usage: cf-worker-deploy <script_name> <js_file>
+#
+# The script must be in ES module format (uses `export default { fetch }`).
+# For service-worker style scripts, use cf-worker-deploy-classic instead
+# (not yet implemented — add when needed).
+set -e
+
+NAME="$1"
+FILE="$2"
+if [ -z "$NAME" ] || [ -z "$FILE" ]; then
+    echo "Usage: cf-worker-deploy <script_name> <js_file>" >&2
+    exit 1
+fi
+if [ ! -f "$FILE" ]; then
+    echo "ERROR: file not found: $FILE" >&2
+    exit 1
+fi
+
+# 1. Fetch current settings so we preserve bindings + compatibility_date.
+SETTINGS=$(curl -4 -fsS -H "Authorization: Bearer $CF_API_TOKEN" \
+    "$CF_API/accounts/$CF_ACCOUNT_ID/workers/scripts/$NAME/settings")
+
+if ! echo "$SETTINGS" | jq -e '.success' >/dev/null 2>&1; then
+    echo "ERROR: failed to fetch worker settings:" >&2
+    echo "$SETTINGS" | jq '.errors' >&2
+    exit 1
+fi
+
+# Drop inline secret_text bindings — the API doesn't return their values on
+# read, so preserving them across an upload would require re-supplying the
+# value (which we don't have). Caller is responsible for re-creating any
+# inline secrets they want, or — preferred — using Secrets Store bindings
+# which ARE preserved (they reference an external store, no value needed).
+BINDINGS=$(echo "$SETTINGS" | jq '[.result.bindings[]? | select(.type != "secret_text")]')
+COMPAT_DATE=$(echo "$SETTINGS" | jq -r '.result.compatibility_date // (now | strftime("%Y-%m-%d"))')
+
+echo "Preserving from existing worker:"
+echo "  compatibility_date: $COMPAT_DATE"
+echo "  bindings ($(echo "$BINDINGS" | jq 'length')):"
+echo "$BINDINGS" | jq -r '.[] | "    - " + .name + " (type: " + .type + ")"'
+
+# 2. Build metadata blob. main_module names the part in the multipart upload
+#    that contains the entry point.
+METADATA=$(jq -n \
+    --arg cd "$COMPAT_DATE" \
+    --argjson bindings "$BINDINGS" \
+    '{
+        main_module: "worker.js",
+        compatibility_date: $cd,
+        bindings: $bindings
+    }')
+
+echo
+echo "Uploading $FILE → script $NAME ..."
+
+# 3. Multipart PUT. The metadata part is JSON; the script part has
+#    Content-Type "application/javascript+module".
+RESPONSE=$(curl -4 -s -X PUT \
+    -H "Authorization: Bearer $CF_API_TOKEN" \
+    -F "metadata=$METADATA;type=application/json" \
+    -F "worker.js=@$FILE;type=application/javascript+module" \
+    "$CF_API/accounts/$CF_ACCOUNT_ID/workers/scripts/$NAME")
+
+if echo "$RESPONSE" | jq -e '.success' >/dev/null 2>&1; then
+    echo "OK. Worker $NAME deployed."
+    echo "$RESPONSE" | jq '.result | {id, etag, modified_on, has_assets}'
+else
+    echo "FAILED:" >&2
+    echo "$RESPONSE" | jq '.errors' >&2
+    exit 1
+fi

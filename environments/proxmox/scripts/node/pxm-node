@@ -1,0 +1,195 @@
+#!/usr/bin/env python3
+"""
+Proxmox Node Management CLI
+"""
+
+import sys
+import argparse
+import json
+from pathlib import Path
+from datetime import datetime
+
+sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
+
+from proxmox_client import get_client
+from tabulate import tabulate
+
+
+def list_nodes(args):
+    """List all nodes"""
+    client = get_client()
+    nodes = client.get_nodes()
+
+    if args.json:
+        print(json.dumps(nodes, indent=2))
+        return
+
+    if not nodes:
+        print("No nodes found")
+        return
+
+    headers = ['Node', 'Status', 'CPU Usage', 'Memory Usage', 'Uptime']
+    rows = []
+    for node in sorted(nodes, key=lambda x: x.get('node', '')):
+        cpu_pct = node.get('cpu', 0) * 100
+        mem_total = node.get('maxmem', 0)
+        mem_used = node.get('mem', 0)
+        mem_pct = (mem_used / mem_total * 100) if mem_total > 0 else 0
+        uptime_sec = node.get('uptime', 0)
+        uptime_days = uptime_sec // 86400
+
+        rows.append([
+            node.get('node', 'N/A'),
+            node.get('status', 'N/A'),
+            f"{cpu_pct:.1f}%",
+            f"{mem_pct:.1f}% ({mem_used // (1024**3)}/{mem_total // (1024**3)} GB)",
+            f"{uptime_days}d {(uptime_sec % 86400) // 3600}h"
+        ])
+
+    print(tabulate(rows, headers=headers, tablefmt='grid'))
+
+
+def node_status(args):
+    """Get node status"""
+    client = get_client()
+    status = client.get_node_status(args.node)
+
+    if args.json:
+        print(json.dumps(status, indent=2))
+        return
+
+    print(f"Node: {args.node}")
+    print(f"Status: {status.get('status', 'N/A')}")
+    print(f"Uptime: {status.get('uptime', 0) // 86400} days")
+    print(f"CPU: {status.get('cpu', 0) * 100:.1f}%")
+
+    mem_total = status.get('memory', {}).get('total', 0)
+    mem_used = status.get('memory', {}).get('used', 0)
+    print(f"Memory: {mem_used // (1024**3)}/{mem_total // (1024**3)} GB ({mem_used/mem_total*100:.1f}%)")
+
+    disk_total = status.get('rootfs', {}).get('total', 0)
+    disk_used = status.get('rootfs', {}).get('used', 0)
+    print(f"Disk: {disk_used // (1024**3)}/{disk_total // (1024**3)} GB ({disk_used/disk_total*100:.1f}%)")
+
+
+def node_version(args):
+    """Get node version"""
+    client = get_client()
+    version = client.get_node_version(args.node)
+
+    if args.json:
+        print(json.dumps(version, indent=2))
+        return
+
+    print(f"Node: {args.node}")
+    print(f"Version: {version.get('version', 'N/A')}")
+    print(f"Release: {version.get('release', 'N/A')}")
+    print(f"Kernel: {version.get('kversion', 'N/A')}")
+
+
+def node_tasks(args):
+    """List node tasks"""
+    client = get_client()
+    tasks = client.get_tasks(args.node, limit=args.limit)
+
+    if args.json:
+        print(json.dumps(tasks, indent=2))
+        return
+
+    if not tasks:
+        print("No tasks found")
+        return
+
+    headers = ['Type', 'VMID', 'Status', 'User', 'Start Time']
+    rows = []
+    for task in tasks[:args.limit]:
+        starttime = task.get('starttime', 0)
+        date_str = datetime.fromtimestamp(starttime).strftime('%Y-%m-%d %H:%M:%S') if starttime else 'N/A'
+
+        rows.append([
+            task.get('type', 'N/A'),
+            task.get('id', 'N/A'),
+            task.get('status', 'N/A'),
+            task.get('user', 'N/A'),
+            date_str
+        ])
+
+    print(tabulate(rows, headers=headers, tablefmt='grid'))
+
+
+def node_network(args):
+    """List node network configuration"""
+    client = get_client()
+    network = client.get_network(args.node)
+
+    if args.json:
+        print(json.dumps(network, indent=2))
+        return
+
+    if not network:
+        print("No network interfaces found")
+        return
+
+    headers = ['Interface', 'Type', 'Active', 'Address', 'Gateway']
+    rows = []
+    for iface in sorted(network, key=lambda x: x.get('iface', '')):
+        rows.append([
+            iface.get('iface', 'N/A'),
+            iface.get('type', 'N/A'),
+            'Yes' if iface.get('active', 0) else 'No',
+            iface.get('address', 'N/A'),
+            iface.get('gateway', 'N/A')
+        ])
+
+    print(tabulate(rows, headers=headers, tablefmt='grid'))
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Proxmox Node Management')
+    parser.add_argument('--json', action='store_true', help='Output in JSON format')
+
+    subparsers = parser.add_subparsers(dest='command', help='Commands')
+
+    # List nodes
+    list_parser = subparsers.add_parser('list', aliases=['ls'], help='List all nodes')
+    list_parser.set_defaults(func=list_nodes)
+
+    # Node status
+    status_parser = subparsers.add_parser('status', help='Get node status')
+    status_parser.add_argument('node', help='Node name')
+    status_parser.set_defaults(func=node_status)
+
+    # Node version
+    version_parser = subparsers.add_parser('version', help='Get node version')
+    version_parser.add_argument('node', help='Node name')
+    version_parser.set_defaults(func=node_version)
+
+    # Node tasks
+    tasks_parser = subparsers.add_parser('tasks', help='List node tasks')
+    tasks_parser.add_argument('node', help='Node name')
+    tasks_parser.add_argument('--limit', type=int, default=25, help='Number of tasks to show')
+    tasks_parser.set_defaults(func=node_tasks)
+
+    # Node network
+    network_parser = subparsers.add_parser('network', help='Show node network configuration')
+    network_parser.add_argument('node', help='Node name')
+    network_parser.set_defaults(func=node_network)
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
+
+    try:
+        args.func(args)
+    except KeyboardInterrupt:
+        print("\nCancelled", file=sys.stderr)
+        sys.exit(130)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,7 @@
+#!/bin/bash
+# Watch pods in a namespace
+if [ -z "$1" ]; then
+    kubectl get pods --all-namespaces -w
+else
+    kubectl get pods -n "$1" -w
+fi

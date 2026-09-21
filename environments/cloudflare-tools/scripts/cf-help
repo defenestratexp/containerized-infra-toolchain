@@ -1,0 +1,16 @@
+#!/bin/bash
+cat << EOF
+Cloudflare Tools
+
+  cf-help                                    - This help text
+  cf-tunnel-list                             - List ingress rules in $CF_TUNNEL_NAME tunnel
+  cf-tunnel-add-hostname <host> <service>    - Add public hostname to tunnel
+                                                e.g. cf-tunnel-add-hostname alerts.example.com http://192.0.2.169
+  cf-tunnel-del-hostname <host>              - Remove hostname from tunnel
+  cf-tunnel-config                           - Print full tunnel config (raw JSON)
+  cf-zone-list                               - List Cloudflare DNS zones
+
+Context:
+  Account:  $CF_ACCOUNT_ID
+  Tunnel:   $CF_TUNNEL_NAME ($CF_TUNNEL_ID)
+EOF

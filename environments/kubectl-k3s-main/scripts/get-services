@@ -1,0 +1,9 @@
+#!/bin/bash
+# Get all services
+NAMESPACE=${1:-"--all-namespaces"}
+echo "Services in k3s-main cluster:"
+if [ "$NAMESPACE" = "--all-namespaces" ]; then
+    kubectl get services --all-namespaces -o wide
+else
+    kubectl get services -n "$NAMESPACE" -o wide
+fi

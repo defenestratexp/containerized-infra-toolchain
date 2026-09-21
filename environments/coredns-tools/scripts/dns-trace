@@ -1,0 +1,15 @@
+#!/bin/bash
+# Trace DNS resolution path
+# Usage: dns-trace <hostname>
+
+HOST=${1:-}
+SERVER=${DNS_SERVER:-192.0.2.169}
+
+if [ -z "$HOST" ]; then
+    echo "Usage: dns-trace <hostname>"
+    exit 1
+fi
+
+echo "Tracing DNS resolution for $HOST"
+echo "================================="
+dig @"$SERVER" "$HOST" +trace

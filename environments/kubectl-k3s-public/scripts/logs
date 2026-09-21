@@ -1,0 +1,19 @@
+#!/bin/bash
+# Get logs from a pod
+# Usage: logs <pod-name> [namespace] [container]
+
+if [ -z "$1" ]; then
+    echo "Usage: logs <pod-name> [namespace] [container]"
+    echo "Example: logs wagtail-abc123 example-site"
+    exit 1
+fi
+
+POD=$1
+NAMESPACE=${2:-default}
+CONTAINER=$3
+
+if [ -n "$CONTAINER" ]; then
+    kubectl logs -n "$NAMESPACE" "$POD" -c "$CONTAINER" --tail=100 -f
+else
+    kubectl logs -n "$NAMESPACE" "$POD" --tail=100 -f
+fi

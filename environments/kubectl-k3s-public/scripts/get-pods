@@ -1,0 +1,7 @@
+#!/bin/bash
+# Get pods, optionally filtered by namespace
+if [ -z "$1" ]; then
+    kubectl get pods --all-namespaces -o wide
+else
+    kubectl get pods -n "$1" -o wide
+fi

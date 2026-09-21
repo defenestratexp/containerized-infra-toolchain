@@ -1,0 +1,9 @@
+#!/bin/bash
+# Watch pods in real-time
+NAMESPACE=${1:-"--all-namespaces"}
+echo "Watching pods in k3s-util cluster..."
+if [ "$NAMESPACE" = "--all-namespaces" ]; then
+    kubectl get pods --all-namespaces -w
+else
+    kubectl get pods -n "$NAMESPACE" -w
+fi

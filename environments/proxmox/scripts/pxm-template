@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""
+Proxmox Template Management CLI
+Lists and inspects VM templates across Proxmox cluster
+"""
+
+import sys
+import os
+
+# Add lib directory to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'lib'))
+
+from proxmox_client import get_client
+import json
+
+def list_templates(client):
+    """List all templates across all nodes"""
+    print(f"{'Node':<15} {'VMID':<8} {'Name':<25} {'Cores':<8} {'Memory':<10} {'Disk'}")
+    print("-" * 90)
+
+    # Get all VMs across all nodes
+    all_vms = client.get_vms()
+
+    templates = [vm for vm in all_vms if vm.get('template', 0) == 1]
+
+    if not templates:
+        print("No templates found")
+        return
+
+    for vm in sorted(templates, key=lambda x: (x.get('node', ''), x.get('vmid', 0))):
+        vmid = vm['vmid']
+        name = vm['name']
+        node = vm['node']
+
+        # Get detailed config
+        try:
+            config = client.get_vm_config(node, vmid)
+            cores = config.get('cores', 'N/A')
+            memory = f"{config.get('memory', 'N/A')} MB"
+
+            # Get disk info
+            disks = []
+            for key, value in config.items():
+                if key.startswith(('scsi', 'ide', 'virtio', 'sata')):
+                    if isinstance(value, str) and 'size=' in value:
+                        # Extract size from disk config
+                        for part in value.split(','):
+                            if 'size=' in part:
+                                disks.append(part.split('=')[1])
+
+            disk_info = ', '.join(disks) if disks else 'N/A'
+
+            print(f"{node:<15} {vmid:<8} {name:<25} {cores:<8} {memory:<10} {disk_info}")
+        except Exception as e:
+            print(f"{node:<15} {vmid:<8} {name:<25} Error getting details: {e}")
+
+def show_template(client, template_name):
+    """Show detailed information about a specific template"""
+    # Find the template
+    template = client.find_vm_by_name(template_name)
+
+    if not template:
+        print(f"Template '{template_name}' not found")
+        return 1
+
+    # Verify it's actually a template
+    if template.get('template', 0) != 1:
+        print(f"VM '{template_name}' exists but is not a template")
+        return 1
+
+    node = template['node']
+    vmid = template['vmid']
+
+    print(f"\nTemplate: {template_name}")
+    print(f"Node: {node}")
+    print(f"VMID: {vmid}")
+    print(f"Status: {template.get('status', 'unknown')}")
+    print("\nConfiguration:")
+
+    try:
+        config = client.get_vm_config(node, vmid)
+
+        # Pretty print important config
+        important_keys = [
+            'cores', 'sockets', 'memory', 'ostype', 'boot',
+            'bootdisk', 'agent', 'cpu', 'numa'
+        ]
+
+        for key in important_keys:
+            if key in config:
+                print(f"  {key}: {config[key]}")
+
+        # Disks
+        print("\nDisks:")
+        disk_found = False
+        for key, value in sorted(config.items()):
+            if key.startswith(('scsi', 'ide', 'virtio', 'sata')) and not key.endswith('_iops'):
+                print(f"  {key}: {value}")
+                disk_found = True
+
+        if not disk_found:
+            print("  No disks found")
+
+        # Network
+        print("\nNetwork:")
+        net_found = False
+        for key, value in sorted(config.items()):
+            if key.startswith('net'):
+                print(f"  {key}: {value}")
+                net_found = True
+
+        if not net_found:
+            print("  No network interfaces found")
+
+        # Cloud-init (if present)
+        cloudinit_keys = [k for k in config.keys() if 'cloud' in k.lower() or k in ['ciuser', 'cipassword', 'ipconfig0', 'nameserver', 'searchdomain', 'sshkeys']]
+        if cloudinit_keys:
+            print("\nCloud-init:")
+            for key in cloudinit_keys:
+                if key in config:
+                    # Mask sensitive data
+                    value = config[key]
+                    if 'password' in key.lower():
+                        value = '***REDACTED***'
+                    print(f"  {key}: {value}")
+        else:
+            print("\nCloud-init: Not configured")
+
+    except Exception as e:
+        print(f"\nError getting template details: {e}")
+        return 1
+
+    return 0
+
+def show_usage():
+    """Show usage information"""
+    print("""Usage: pxm-template <command> [args]
+
+Commands:
+  list              List all templates across all Proxmox nodes
+  show <name>       Show detailed information about a specific template
+
+Examples:
+  pxm-template list
+  pxm-template show homelab-2204-template
+
+Environment:
+  Uses credentials from proxmox.env in the same directory as this script
+""")
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ['-h', '--help']:
+        show_usage()
+        return 0
+
+    command = sys.argv[1]
+
+    try:
+        client = get_client()
+
+        if command == 'list':
+            list_templates(client)
+        elif command == 'show':
+            if len(sys.argv) < 3:
+                print("Error: 'show' command requires template name")
+                show_usage()
+                return 1
+            template_name = sys.argv[2]
+            return show_template(client, template_name)
+        else:
+            print(f"Unknown command: {command}")
+            show_usage()
+            return 1
+
+        return 0
+
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return 1
+
+if __name__ == '__main__':
+    sys.exit(main())

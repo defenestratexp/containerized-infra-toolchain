@@ -1,0 +1,18 @@
+#!/bin/bash
+# Deploy a manifest file
+# Usage: deploy-manifest <manifest-file> [namespace]
+
+if [ -z "$1" ]; then
+    echo "Usage: deploy-manifest <manifest-file> [namespace]"
+    echo "Example: deploy-manifest /manifests/wagtail.yaml example-site"
+    exit 1
+fi
+
+MANIFEST=$1
+NAMESPACE=$2
+
+if [ -n "$NAMESPACE" ]; then
+    kubectl apply -f "$MANIFEST" -n "$NAMESPACE"
+else
+    kubectl apply -f "$MANIFEST"
+fi

@@ -1,0 +1,4 @@
+#!/bin/bash
+# Get cluster nodes
+echo "k3s-util Cluster Nodes:"
+kubectl get nodes -o wide

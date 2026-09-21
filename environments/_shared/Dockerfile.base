@@ -1,0 +1,6 @@
+# homelab-tools-base — shared base image for home API-tool envs.
+# alpine + curl/jq/python3/aws-cli + the shared lib. Everything FROM this inherits /lib/common.sh.
+FROM alpine:3.20
+RUN apk add --no-cache bash curl jq python3 aws-cli ca-certificates coreutils
+COPY lib/ /lib/
+WORKDIR /workspace

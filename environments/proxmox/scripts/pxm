@@ -1,0 +1,115 @@
+#!/bin/bash
+#
+# pxm - Proxmox Management CLI
+# Main wrapper script for Proxmox API operations
+#
+
+set -e
+
+# Use fixed path in container, or resolve symlink if running locally
+if [ -d "/opt/proxmox-api/scripts" ]; then
+    SCRIPT_DIR="/opt/proxmox-api/scripts"
+else
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
+
+# Help text
+show_help() {
+    cat << EOF
+pxm - Proxmox Management CLI
+
+Usage: pxm <command> [subcommand] [options]
+
+Commands:
+  vm          Manage virtual machines
+  node        Manage Proxmox nodes
+  storage     Manage storage
+  snapshot    Manage VM snapshots
+  template    Manage VM templates
+  container   Manage LXC containers
+  help        Show this help message
+
+Examples:
+  pxm vm list                    List all VMs
+  pxm vm start 100               Start VM 100
+  pxm node list                  List all nodes
+  pxm storage list               List storage
+  pxm snapshot list 100          List snapshots for VM 100
+  pxm template list              List all templates
+  pxm template show homelab-2204     Show template details
+
+Environment Variables:
+  PROXMOX_HOST          Proxmox API host
+  PROXMOX_USER          API user (e.g., deploy@pam)
+  PROXMOX_TOKEN_NAME    API token name
+  PROXMOX_TOKEN_VALUE   API token value
+
+For detailed help on a command:
+  pxm <command> --help
+
+EOF
+}
+
+# Check for required environment variables
+check_env() {
+    if [ -z "$PROXMOX_HOST" ] || [ -z "$PROXMOX_USER" ] || \
+       [ -z "$PROXMOX_TOKEN_NAME" ] || [ -z "$PROXMOX_TOKEN_VALUE" ]; then
+        echo "Error: Missing required environment variables." >&2
+        echo "" >&2
+        echo "Required variables:" >&2
+        echo "  PROXMOX_HOST" >&2
+        echo "  PROXMOX_USER" >&2
+        echo "  PROXMOX_TOKEN_NAME" >&2
+        echo "  PROXMOX_TOKEN_VALUE" >&2
+        echo "" >&2
+        echo "Example:" >&2
+        echo "  export PROXMOX_HOST=pve1" >&2
+        echo "  export PROXMOX_USER=deploy@pam" >&2
+        echo "  export PROXMOX_TOKEN_NAME=deploy-proxmox-token" >&2
+        echo "  export PROXMOX_TOKEN_VALUE=your-token-here" >&2
+        exit 1
+    fi
+}
+
+# Main command dispatcher
+main() {
+    if [ $# -eq 0 ] || [ "$1" = "help" ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+        show_help
+        exit 0
+    fi
+
+    check_env
+
+    local command="$1"
+    shift
+
+    case "$command" in
+        vm)
+            exec python3 "$SCRIPT_DIR/vm/pxm-vm" "$@"
+            ;;
+        node)
+            exec python3 "$SCRIPT_DIR/node/pxm-node" "$@"
+            ;;
+        storage)
+            exec python3 "$SCRIPT_DIR/storage/pxm-storage" "$@"
+            ;;
+        snapshot|snap)
+            exec python3 "$SCRIPT_DIR/snapshot/pxm-snapshot" "$@"
+            ;;
+        template|tmpl)
+            exec python3 "$SCRIPT_DIR/pxm-template" "$@"
+            ;;
+        container|ct|lxc)
+            echo "Container management coming soon" >&2
+            exit 1
+            ;;
+        *)
+            echo "Unknown command: $command" >&2
+            echo "" >&2
+            echo "Run 'pxm help' for usage information." >&2
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

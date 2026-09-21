@@ -1,0 +1,29 @@
+#!/bin/bash
+# Check if ports are open on a host
+# Usage: port-check <host> [ports...]
+
+HOST=${1:-}
+shift
+PORTS=${@:-22 80 443}
+
+if [ -z "$HOST" ]; then
+    echo "Usage: port-check <host> [ports...]"
+    echo ""
+    echo "Examples:"
+    echo "  port-check 192.0.2.68"
+    echo "  port-check k3s-main 22 80 443 6443"
+    exit 1
+fi
+
+echo "Port check for $HOST"
+echo "====================="
+printf "%-10s %s\n" "PORT" "STATUS"
+echo "---------------------"
+
+for port in $PORTS; do
+    if nc -z -w2 "$HOST" "$port" 2>/dev/null; then
+        printf "%-10s \033[0;32mOPEN\033[0m\n" "$port"
+    else
+        printf "%-10s \033[0;31mCLOSED\033[0m\n" "$port"
+    fi
+done

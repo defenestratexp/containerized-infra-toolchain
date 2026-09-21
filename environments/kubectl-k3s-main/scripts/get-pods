@@ -1,0 +1,9 @@
+#!/bin/bash
+# Get all pods across namespaces
+NAMESPACE=${1:-"--all-namespaces"}
+echo "Pods in k3s-main cluster:"
+if [ "$NAMESPACE" = "--all-namespaces" ]; then
+    kubectl get pods --all-namespaces -o wide
+else
+    kubectl get pods -n "$NAMESPACE" -o wide
+fi

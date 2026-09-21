@@ -1,0 +1,42 @@
+#!/bin/bash
+# Get comprehensive info about a host
+# Usage: host-info <host>
+
+HOST=${1:-}
+
+if [ -z "$HOST" ]; then
+    echo "Usage: host-info <host>"
+    exit 1
+fi
+
+echo "Host Information: $HOST"
+echo "========================"
+echo ""
+
+echo "DNS Resolution:"
+dig +short "$HOST" 2>/dev/null || echo "  No DNS resolution"
+echo ""
+
+echo "Reverse DNS:"
+IP=$(dig +short "$HOST" 2>/dev/null | head -1)
+if [ -n "$IP" ]; then
+    dig +short -x "$IP" 2>/dev/null || echo "  No PTR record"
+else
+    echo "  N/A (no IP resolved)"
+fi
+echo ""
+
+echo "Ping Test:"
+ping -c 3 "$HOST" 2>/dev/null | tail -3 || echo "  Host unreachable"
+echo ""
+
+echo "Common Ports:"
+for port in 22 80 443 8080 3306 5432 6379; do
+    if nc -z -w1 "$HOST" "$port" 2>/dev/null; then
+        printf "  %-6s \033[0;32mOPEN\033[0m\n" "$port"
+    fi
+done
+echo ""
+
+echo "Traceroute (max 10 hops):"
+traceroute -m 10 "$HOST" 2>/dev/null || echo "  Traceroute failed"

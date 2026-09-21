@@ -1,0 +1,27 @@
+#!/bin/bash
+# Get logs from a pod
+# Usage: logs <pod-name> [namespace] [container]
+
+if [ $# -eq 0 ]; then
+    echo "Usage: logs <pod-name> [namespace] [container]"
+    echo "Example: logs my-app-pod default"
+    echo "Example: logs multi-container-pod default app-container"
+    exit 1
+fi
+
+POD_NAME="$1"
+NAMESPACE="$2"
+CONTAINER="$3"
+
+KUBECTL_CMD="kubectl logs $POD_NAME"
+
+if [ -n "$NAMESPACE" ]; then
+    KUBECTL_CMD="$KUBECTL_CMD -n $NAMESPACE"
+fi
+
+if [ -n "$CONTAINER" ]; then
+    KUBECTL_CMD="$KUBECTL_CMD -c $CONTAINER"
+fi
+
+echo "Getting logs for $POD_NAME..."
+eval $KUBECTL_CMD

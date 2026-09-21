@@ -1,0 +1,15 @@
+#!/bin/bash
+# Display cluster information
+echo "=== k3s-main Cluster Information ==="
+echo ""
+echo "Cluster Info:"
+kubectl cluster-info
+echo ""
+echo "Nodes:"
+kubectl get nodes -o wide
+echo ""
+echo "Namespaces:"
+kubectl get namespaces
+echo ""
+echo "System Pods:"
+kubectl get pods -n kube-system

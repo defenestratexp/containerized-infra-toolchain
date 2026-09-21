@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+"""
+Proxmox VM Management CLI
+"""
+
+import sys
+import argparse
+import json
+from pathlib import Path
+
+# Add lib directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
+
+from proxmox_client import get_client
+from tabulate import tabulate
+
+
+def list_vms(args):
+    """List all VMs"""
+    client = get_client()
+    vms = client.get_vms(node=args.node)
+
+    if args.json:
+        print(json.dumps(vms, indent=2))
+        return
+
+    if not vms:
+        print("No VMs found")
+        return
+
+    headers = ['VMID', 'Name', 'Node', 'Status', 'CPU', 'Memory', 'Disk']
+    rows = []
+    for vm in sorted(vms, key=lambda x: x.get('vmid', 0)):
+        rows.append([
+            vm.get('vmid', 'N/A'),
+            vm.get('name', 'N/A'),
+            vm.get('node', 'N/A'),
+            vm.get('status', 'N/A'),
+            f"{vm.get('cpus', 0)}",
+            f"{vm.get('maxmem', 0) // (1024**3)} GB",
+            f"{vm.get('maxdisk', 0) // (1024**3)} GB"
+        ])
+
+    print(tabulate(rows, headers=headers, tablefmt='grid'))
+
+
+def get_vm(args):
+    """Get VM details"""
+    client = get_client()
+
+    # If no node specified, try to find the VM
+    if not args.node:
+        vm = client.find_vm(str(args.vmid))
+        if vm:
+            args.node = vm['node']
+            args.vmid = vm['vmid']
+        else:
+            print(f"VM not found. Please specify --node", file=sys.stderr)
+            sys.exit(1)
+
+    vm = client.get_vm(args.node, int(args.vmid))
+
+    if args.json:
+        print(json.dumps(vm, indent=2))
+    else:
+        for key, value in sorted(vm.items()):
+            print(f"{key:20s}: {value}")
+
+
+def start_vm(args):
+    """Start a VM"""
+    client = get_client()
+
+    if not args.node:
+        vm = client.find_vm(str(args.vmid))
+        if vm:
+            args.node = vm['node']
+            args.vmid = vm['vmid']
+
+    result = client.start_vm(args.node, int(args.vmid))
+    print(f"Started VM {args.vmid} on {args.node}")
+    if args.json:
+        print(json.dumps(result, indent=2))
+
+
+def stop_vm(args):
+    """Stop a VM"""
+    client = get_client()
+
+    if not args.node:
+        vm = client.find_vm(str(args.vmid))
+        if vm:
+            args.node = vm['node']
+            args.vmid = vm['vmid']
+
+    if args.force:
+        result = client.stop_vm(args.node, int(args.vmid))
+        print(f"Stopped VM {args.vmid} on {args.node} (forced)")
+    else:
+        result = client.shutdown_vm(args.node, int(args.vmid))
+        print(f"Shutting down VM {args.vmid} on {args.node} (graceful)")
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+
+
+def restart_vm(args):
+    """Restart a VM"""
+    client = get_client()
+
+    if not args.node:
+        vm = client.find_vm(str(args.vmid))
+        if vm:
+            args.node = vm['node']
+            args.vmid = vm['vmid']
+
+    if args.force:
+        result = client.reset_vm(args.node, int(args.vmid))
+        print(f"Reset VM {args.vmid} on {args.node} (hard reset)")
+    else:
+        result = client.reboot_vm(args.node, int(args.vmid))
+        print(f"Rebooting VM {args.vmid} on {args.node} (graceful)")
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+
+
+def delete_vm(args):
+    """Delete a VM"""
+    client = get_client()
+
+    if not args.node:
+        vm = client.find_vm(str(args.vmid))
+        if vm:
+            args.node = vm['node']
+            args.vmid = vm['vmid']
+
+    if not args.yes:
+        response = input(f"Delete VM {args.vmid} on {args.node}? [y/N]: ")
+        if response.lower() != 'y':
+            print("Cancelled")
+            return
+
+    result = client.delete_vm(args.node, int(args.vmid), purge=args.purge)
+    print(f"Deleted VM {args.vmid} from {args.node}")
+    if args.json:
+        print(json.dumps(result, indent=2))
+
+
+def clone_vm(args):
+    """Clone a VM"""
+    client = get_client()
+
+    if not args.node:
+        vm = client.find_vm(str(args.vmid))
+        if vm:
+            args.node = vm['node']
+            args.vmid = vm['vmid']
+
+    result = client.clone_vm(
+        args.node,
+        int(args.vmid),
+        int(args.newid),
+        name=args.name,
+        full=not args.linked,
+        target=args.target
+    )
+
+    print(f"Cloning VM {args.vmid} to {args.newid}")
+    if args.json:
+        print(json.dumps(result, indent=2))
+
+
+def create_vm(args):
+    """Create a new VM"""
+    client = get_client()
+
+    params = {}
+    if args.name:
+        params['name'] = args.name
+    if args.memory:
+        params['memory'] = args.memory
+    if args.cores:
+        params['cores'] = args.cores
+    if args.disk:
+        params['scsi0'] = args.disk
+    if args.network:
+        params['net0'] = args.network
+    if args.iso:
+        params['ide2'] = f"{args.iso},media=cdrom"
+
+    result = client.create_vm(args.node, int(args.vmid), **params)
+    print(f"Created VM {args.vmid} on {args.node}")
+    if args.json:
+        print(json.dumps(result, indent=2))
+
+
+def config_vm(args):
+    """Get or update VM configuration"""
+    client = get_client()
+
+    if not args.node:
+        vm = client.find_vm(str(args.vmid))
+        if vm:
+            args.node = vm['node']
+            args.vmid = vm['vmid']
+
+    if args.set:
+        # Update configuration
+        params = {}
+        for item in args.set:
+            key, value = item.split('=', 1)
+            params[key] = value
+
+        result = client.update_vm_config(args.node, int(args.vmid), **params)
+        print(f"Updated VM {args.vmid} configuration")
+        if args.json:
+            print(json.dumps(result, indent=2))
+    else:
+        # Get configuration
+        config = client.get_vm_config(args.node, int(args.vmid))
+        if args.json:
+            print(json.dumps(config, indent=2))
+        else:
+            for key, value in sorted(config.items()):
+                print(f"{key:20s}: {value}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Proxmox VM Management')
+    parser.add_argument('--json', action='store_true', help='Output in JSON format')
+    parser.add_argument('--node', help='Proxmox node name')
+
+    subparsers = parser.add_subparsers(dest='command', help='Commands')
+
+    # List VMs
+    list_parser = subparsers.add_parser('list', aliases=['ls'], help='List all VMs')
+    list_parser.set_defaults(func=list_vms)
+
+    # Get VM details
+    get_parser = subparsers.add_parser('get', aliases=['show'], help='Get VM details')
+    get_parser.add_argument('vmid', help='VM ID or name')
+    get_parser.set_defaults(func=get_vm)
+
+    # Start VM
+    start_parser = subparsers.add_parser('start', help='Start a VM')
+    start_parser.add_argument('vmid', help='VM ID or name')
+    start_parser.set_defaults(func=start_vm)
+
+    # Stop VM
+    stop_parser = subparsers.add_parser('stop', help='Stop a VM')
+    stop_parser.add_argument('vmid', help='VM ID or name')
+    stop_parser.add_argument('--force', action='store_true', help='Force stop (no graceful shutdown)')
+    stop_parser.set_defaults(func=stop_vm)
+
+    # Restart VM
+    restart_parser = subparsers.add_parser('restart', aliases=['reboot'], help='Restart a VM')
+    restart_parser.add_argument('vmid', help='VM ID or name')
+    restart_parser.add_argument('--force', action='store_true', help='Force restart (hard reset)')
+    restart_parser.set_defaults(func=restart_vm)
+
+    # Delete VM
+    delete_parser = subparsers.add_parser('delete', aliases=['rm'], help='Delete a VM')
+    delete_parser.add_argument('vmid', help='VM ID or name')
+    delete_parser.add_argument('--purge', action='store_true', help='Purge all VM data')
+    delete_parser.add_argument('-y', '--yes', action='store_true', help='Skip confirmation')
+    delete_parser.set_defaults(func=delete_vm)
+
+    # Clone VM
+    clone_parser = subparsers.add_parser('clone', help='Clone a VM')
+    clone_parser.add_argument('vmid', help='Source VM ID or name')
+    clone_parser.add_argument('newid', type=int, help='New VM ID')
+    clone_parser.add_argument('--name', help='Name for new VM')
+    clone_parser.add_argument('--linked', action='store_true', help='Create linked clone')
+    clone_parser.add_argument('--target', help='Target node for clone')
+    clone_parser.set_defaults(func=clone_vm)
+
+    # Create VM
+    create_parser = subparsers.add_parser('create', help='Create a new VM')
+    create_parser.add_argument('vmid', type=int, help='VM ID')
+    create_parser.add_argument('--name', help='VM name')
+    create_parser.add_argument('--memory', type=int, help='Memory in MB')
+    create_parser.add_argument('--cores', type=int, help='CPU cores')
+    create_parser.add_argument('--disk', help='Disk config (e.g., local-lvm:32)')
+    create_parser.add_argument('--network', help='Network config (e.g., virtio,bridge=vmbr0)')
+    create_parser.add_argument('--iso', help='ISO image path')
+    create_parser.set_defaults(func=create_vm)
+
+    # Config VM
+    config_parser = subparsers.add_parser('config', help='Get or update VM configuration')
+    config_parser.add_argument('vmid', help='VM ID or name')
+    config_parser.add_argument('--set', nargs='+', help='Set config (key=value)')
+    config_parser.set_defaults(func=config_vm)
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
+
+    try:
+        args.func(args)
+    except KeyboardInterrupt:
+        print("\nCancelled", file=sys.stderr)
+        sys.exit(130)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

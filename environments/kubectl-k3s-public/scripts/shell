@@ -1,0 +1,19 @@
+#!/bin/bash
+# Open a shell in a pod
+# Usage: shell <pod-name> [namespace] [container]
+
+if [ -z "$1" ]; then
+    echo "Usage: shell <pod-name> [namespace] [container]"
+    echo "Example: shell wagtail-abc123 example-site"
+    exit 1
+fi
+
+POD=$1
+NAMESPACE=${2:-default}
+CONTAINER=$3
+
+if [ -n "$CONTAINER" ]; then
+    kubectl exec -it -n "$NAMESPACE" "$POD" -c "$CONTAINER" -- /bin/sh
+else
+    kubectl exec -it -n "$NAMESPACE" "$POD" -- /bin/sh
+fi

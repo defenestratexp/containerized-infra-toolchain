@@ -1,0 +1,29 @@
+#!/bin/bash
+# Deploy Kubernetes manifests
+# Usage: deploy-manifest <manifest-file.yaml> [namespace]
+
+if [ $# -eq 0 ]; then
+    echo "Usage: deploy-manifest <manifest-file.yaml> [namespace]"
+    echo "Example: deploy-manifest /manifests/app.yaml"
+    echo "Example: deploy-manifest /manifests/service.yaml default"
+    exit 1
+fi
+
+MANIFEST_FILE="$1"
+NAMESPACE="$2"
+
+if [ ! -f "$MANIFEST_FILE" ]; then
+    echo "Error: Manifest file '$MANIFEST_FILE' not found"
+    exit 1
+fi
+
+echo "Deploying $MANIFEST_FILE to k3s-main cluster..."
+
+if [ -n "$NAMESPACE" ]; then
+    echo "Using namespace: $NAMESPACE"
+    kubectl apply -f "$MANIFEST_FILE" -n "$NAMESPACE"
+else
+    kubectl apply -f "$MANIFEST_FILE"
+fi
+
+echo "Deployment complete!"

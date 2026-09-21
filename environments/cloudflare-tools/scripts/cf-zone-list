@@ -1,0 +1,6 @@
+#!/bin/bash
+# List Cloudflare DNS zones accessible to the token.
+set -e
+curl -4 -fsS -H "Authorization: Bearer $CF_API_TOKEN" \
+    "$CF_API/zones" \
+    | jq -r '.result[] | "\(.name)  (\(.id))  status=\(.status)"'

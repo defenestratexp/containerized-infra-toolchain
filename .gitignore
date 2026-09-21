@@ -1,0 +1,21 @@
+# Never commit credentials or local state
+.env
+*.env
+!*.env.example
+*.pem
+*.key
+kubeconfig*
+terraform/state/
+environments/terraform/state/
+*.tfplan
+*.tfstate*
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

@@ -1,0 +1,32 @@
+#!/bin/bash
+# Check HTTP/HTTPS endpoints
+# Usage: http-check <url>
+
+URL=${1:-}
+
+if [ -z "$URL" ]; then
+    echo "Usage: http-check <url>"
+    echo ""
+    echo "Examples:"
+    echo "  http-check http://192.0.2.68:8080"
+    echo "  http-check https://app.example.com"
+    exit 1
+fi
+
+echo "HTTP Check: $URL"
+echo "================="
+echo ""
+
+# Get response code and timing
+echo "Response:"
+curl -sS -o /dev/null -w "  Status Code: %{http_code}
+  Time Total: %{time_total}s
+  Time Connect: %{time_connect}s
+  Time TTFB: %{time_starttransfer}s
+  Size: %{size_download} bytes
+  Remote IP: %{remote_ip}:%{remote_port}
+" "$URL" 2>&1
+
+echo ""
+echo "Headers:"
+curl -sS -I "$URL" 2>&1 | head -20
